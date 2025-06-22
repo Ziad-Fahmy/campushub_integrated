@@ -1,0 +1,133 @@
+{
+  "university_info": {
+    "name": "King Salman International University",
+    "location": "Ras Sudr, South Sinai, Egypt",
+    "established": "2020",
+    "type": "Private International University"
+  },
+  "admissions": {
+    "computer_science_requirements": {
+      "minimum_grade": "85% in high school",
+      "required_subjects": ["Mathematics", "Physics", "English"],
+      "entrance_exam": "Required",
+      "application_deadline": "August 15th annually"
+    },
+    "engineering_requirements": {
+      "minimum_grade": "80% in high school",
+      "required_subjects": ["Mathematics", "Physics", "Chemistry"],
+      "entrance_exam": "Required",
+      "application_deadline": "August 15th annually"
+    },
+    "application_process": [
+      "Submit online application",
+      "Upload required documents",
+      "Take entrance examination",
+      "Attend interview if selected",
+      "Receive admission decision"
+    ]
+  },
+  "faculties": {
+    "computer_science": {
+      "programs": ["Computer Science", "Software Engineering", "Information Systems"],
+      "duration": "4 years",
+      "degree": "Bachelor of Science"
+    },
+    "engineering": {
+      "programs": ["Civil Engineering", "Mechanical Engineering", "Electrical Engineering"],
+      "duration": "5 years",
+      "degree": "Bachelor of Engineering"
+    },
+    "business": {
+      "programs": ["Business Administration", "Marketing", "Finance"],
+      "duration": "4 years",
+      "degree": "Bachelor of Business Administration"
+    }
+  },
+  "facilities": {
+    "library": {
+      "name": "Central Library",
+      "hours": "8:00 AM - 10:00 PM",
+      "resources": ["Books", "Digital databases", "Study rooms", "Computer lab"]
+    },
+    "laboratories": {
+      "computer_labs": "5 modern computer laboratories",
+      "engineering_labs": "Mechanical, Electrical, and Civil engineering labs",
+      "science_labs": "Physics, Chemistry, and Biology laboratories"
+    },
+    "sports": {
+      "facilities": ["Gymnasium", "Football field", "Basketball court", "Swimming pool"],
+      "activities": ["Football", "Basketball", "Swimming", "Tennis", "Volleyball"]
+    },
+    "dining": {
+      "cafeteria": "Main cafeteria with international cuisine",
+      "restaurants": ["Italian restaurant", "Fast food court", "Coffee shop"],
+      "hours": "7:00 AM - 9:00 PM"
+    }
+  },
+  "student_services": {
+    "accommodation": {
+      "dormitories": "On-campus housing available",
+      "capacity": "500 students",
+      "amenities": ["WiFi", "Laundry", "Common areas", "24/7 security"]
+    },
+    "transportation": {
+      "bus_service": "Free shuttle service to nearby cities",
+      "schedule": "Every 2 hours during weekdays",
+      "parking": "Free parking available for students"
+    },
+    "health_services": {
+      "clinic": "On-campus medical clinic",
+      "hours": "8:00 AM - 4:00 PM",
+      "services": ["General medicine", "Emergency care", "Health counseling"]
+    }
+  },
+  "contact_information": {
+    "admissions_office": {
+      "phone": "+20 69 123 4567",
+      "email": "admissions@ksiu.edu.eg",
+      "office_hours": "9:00 AM - 5:00 PM, Sunday to Thursday"
+    },
+    "student_affairs": {
+      "phone": "+20 69 123 4568",
+      "email": "studentaffairs@ksiu.edu.eg",
+      "office_hours": "8:00 AM - 4:00 PM, Sunday to Thursday"
+    },
+    "main_office": {
+      "phone": "+20 69 123 4500",
+      "email": "info@ksiu.edu.eg",
+      "address": "Ras Sudr, South Sinai, Egypt"
+    }
+  },
+  "academic_calendar": {
+    "fall_semester": {
+      "start_date": "September 15",
+      "end_date": "January 15",
+      "registration": "August 1 - September 10"
+    },
+    "spring_semester": {
+      "start_date": "February 1",
+      "end_date": "June 15",
+      "registration": "January 1 - January 25"
+    },
+    "summer_session": {
+      "start_date": "July 1",
+      "end_date": "August 15",
+      "registration": "June 1 - June 25"
+    }
+  },
+  "tuition_fees": {
+    "computer_science": {
+      "annual_fee": "$8,000",
+      "payment_options": ["Full payment", "Semester installments", "Monthly installments"]
+    },
+    "engineering": {
+      "annual_fee": "$9,000",
+      "payment_options": ["Full payment", "Semester installments", "Monthly installments"]
+    },
+    "business": {
+      "annual_fee": "$7,500",
+      "payment_options": ["Full payment", "Semester installments", "Monthly installments"]
+    }
+  }
+}
+
