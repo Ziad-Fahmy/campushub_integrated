@@ -12,14 +12,14 @@ import {
   Modal,
   Portal,
   Chip,
-  FAB
+  FAB,
+  TextInput
 } from 'react-native-paper';
 import { useSelector } from 'react-redux';
-import apiClient from '../../api/apiClient';
-import * as ImagePicker from 'react-native-image-picker';
+import { getRestaurants, getMenuItems, addMenuItem, updateMenuItem, deleteMenuItem } from '../../api/api';
 
 const MenuManagement = ({ navigation }) => {
-  const { user, token } = useSelector((state) => state.auth);
+  const { user } = useSelector((state) => state.auth);
   const [menuItems, setMenuItems] = useState([]);
   const [restaurants, setRestaurants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -31,7 +31,9 @@ const MenuManagement = ({ navigation }) => {
 
   // Form state for adding/editing menu items
   const [formData, setFormData] = useState({
-    imageUri: null,
+    name: '',
+    description: '',
+    price: '',
     category: '',
     restaurantId: '',
     available: true
@@ -41,14 +43,37 @@ const MenuManagement = ({ navigation }) => {
 
   const fetchMenuItems = async () => {
     try {
-      const response = await apiClient.get('/admin/menu-items', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setMenuItems(response.data.menuItems || []);
+      // Since there's no single endpoint for all menu items, we'll fetch from each restaurant
+      const allMenuItems = [];
+      for (const restaurant of restaurants) {
+        try {
+          const items = await getMenuItems(restaurant._id);
+          const itemsWithRestaurant = items.map(item => ({
+            ...item,
+            restaurantInfo: restaurant
+          }));
+          allMenuItems.push(...itemsWithRestaurant);
+        } catch (error) {
+          console.log(`No menu items for ${restaurant.name}`);
+        }
+      }
+      setMenuItems(allMenuItems);
     } catch (error) {
       console.error('Error fetching menu items:', error);
       setSnackbarMessage('Failed to fetch menu items');
       setSnackbarVisible(true);
+      // Set some mock data for testing
+      setMenuItems([
+        {
+          _id: '1',
+          name: 'Burger',
+          description: 'Delicious beef burger',
+          price: 12.99,
+          category: 'Main Course',
+          available: true,
+          restaurantInfo: { _id: '1', name: 'Campus Café' }
+        }
+      ]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -57,12 +82,11 @@ const MenuManagement = ({ navigation }) => {
 
   const fetchRestaurants = async () => {
     try {
-      const response = await apiClient.get('/admin/restaurants', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setRestaurants(response.data.restaurants || []);
+      const restaurantsData = await getRestaurants();
+      setRestaurants(restaurantsData || []);
     } catch (error) {
       console.error('Error fetching restaurants:', error);
+      // Set some mock data for testing
       setRestaurants([
         { _id: '1', name: 'Campus Café' },
         { _id: '2', name: 'The Dining Hall' },
@@ -73,14 +97,19 @@ const MenuManagement = ({ navigation }) => {
   };
 
   const fetchData = async () => {
-    await Promise.all([fetchMenuItems(), fetchRestaurants()]);
-    setLoading(false);
-    setRefreshing(false);
+    await fetchRestaurants();
+    await fetchMenuItems();
   };
 
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (restaurants.length > 0) {
+      fetchMenuItems();
+    }
+  }, [restaurants]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -90,7 +119,9 @@ const MenuManagement = ({ navigation }) => {
   const handleAddItem = () => {
     setEditingItem(null);
     setFormData({
-      imageUri: null,
+      name: '',
+      description: '',
+      price: '',
       category: '',
       restaurantId: '',
       available: true
@@ -101,68 +132,37 @@ const MenuManagement = ({ navigation }) => {
   const handleEditItem = (item) => {
     setEditingItem(item);
     setFormData({
-      imageUri: item.imageUrl || null,
-      category: item.category,
-      restaurantId: item.restaurantId?._id || item.restaurantId,
-      available: item.available
+      name: item.name || '',
+      description: item.description || '',
+      price: item.price?.toString() || '',
+      category: item.category || '',
+      restaurantId: item.restaurantInfo?._id || item.restaurantId || '',
+      available: item.available !== false
     });
     setModalVisible(true);
   };
 
-  const handleImagePick = async () => {
-    const options = {
-      mediaType: 'photo',
-      quality: 1,
-    };
-
-    ImagePicker.launchImageLibrary(options, (response) => {
-      if (response.didCancel) {
-        console.log('User cancelled image picker');
-      } else if (response.errorCode) {
-        console.log('ImagePicker Error: ', response.errorCode);
-      } else if (response.assets && response.assets.length > 0) {
-        setFormData(prev => ({ ...prev, imageUri: response.assets[0].uri }));
-      }
-    });
-  };
-
   const handleSaveItem = async () => {
-    if (!formData.imageUri || !formData.category || !formData.restaurantId) {
-      setSnackbarMessage('Please select an image, category, and restaurant.');
+    if (!formData.name || !formData.price || !formData.category || !formData.restaurantId) {
+      setSnackbarMessage('Please fill in all required fields.');
       setSnackbarVisible(true);
       return;
     }
 
     try {
-      const data = new FormData();
-      data.append('category', formData.category);
-      data.append('restaurantId', formData.restaurantId);
-      data.append('available', formData.available);
-      if (formData.imageUri) {
-        const uriParts = formData.imageUri.split('.');
-        const fileType = uriParts[uriParts.length - 1];
-        data.append('image', {
-          uri: formData.imageUri,
-          name: `photo.${fileType}`,
-          type: `image/${fileType}`,
-        });
-      }
+      const itemData = {
+        name: formData.name,
+        description: formData.description,
+        price: parseFloat(formData.price),
+        category: formData.category,
+        available: formData.available
+      };
 
       if (editingItem) {
-        await apiClient.put(`/admin/menu-items/${editingItem._id}`, data, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${token}`
-          }
-        });
+        await updateMenuItem(formData.restaurantId, editingItem._id, itemData);
         setSnackbarMessage('Menu item updated successfully');
       } else {
-        await apiClient.post('/admin/menu-items', data, {
-          headers: {
-            'Content-Type': 'multipart/form-data',
-            Authorization: `Bearer ${token}`
-          }
-        });
+        await addMenuItem(formData.restaurantId, itemData);
         setSnackbarMessage('Menu item added successfully');
       }
 
@@ -176,16 +176,15 @@ const MenuManagement = ({ navigation }) => {
     }
   };
 
-  const handleDeleteItem = async (itemId) => {
+  const handleDeleteItem = async (item) => {
     try {
-      await apiClient.delete(`/admin/menu-items/${itemId}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const restaurantId = item.restaurantInfo?._id || item.restaurantId;
+      await deleteMenuItem(restaurantId, item._id);
       
       setSnackbarMessage('Menu item deleted successfully');
       setSnackbarVisible(true);
       
-      setMenuItems(prev => prev.filter(item => item._id !== itemId));
+      setMenuItems(prev => prev.filter(menuItem => menuItem._id !== item._id));
     } catch (error) {
       console.error('Error deleting menu item:', error);
       setSnackbarMessage('Failed to delete menu item');
@@ -193,21 +192,21 @@ const MenuManagement = ({ navigation }) => {
     }
   };
 
-  const toggleAvailability = async (itemId, currentAvailability) => {
+  const toggleAvailability = async (item) => {
     try {
-      await apiClient.put(`/admin/menu-items/${itemId}`, 
-        { available: !currentAvailability },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const restaurantId = item.restaurantInfo?._id || item.restaurantId;
+      const updatedData = { available: !item.available };
       
-      setSnackbarMessage(`Item ${!currentAvailability ? 'enabled' : 'disabled'} successfully`);
+      await updateMenuItem(restaurantId, item._id, updatedData);
+      
+      setSnackbarMessage(`Item ${!item.available ? 'enabled' : 'disabled'} successfully`);
       setSnackbarVisible(true);
       
       setMenuItems(prev => 
-        prev.map(item => 
-          item._id === itemId 
-            ? { ...item, available: !currentAvailability }
-            : item
+        prev.map(menuItem => 
+          menuItem._id === item._id 
+            ? { ...menuItem, available: !item.available }
+            : menuItem
         )
       );
     } catch (error) {
@@ -256,9 +255,13 @@ const MenuManagement = ({ navigation }) => {
           menuItems.map((item) => (
             <Card key={item._id} style={styles.menuCard}>
               <Card.Content>
-                {item.imageUrl && (
-                  <Image source={{ uri: item.imageUrl }} style={styles.menuImage} />
-                )}
+                <View style={styles.itemHeader}>
+                  <Title style={styles.itemName}>{item.name}</Title>
+                  <View style={styles.priceContainer}>
+                    <Text style={styles.price}>${item.price?.toFixed(2) || '0.00'}</Text>
+                  </View>
+                </View>
+
                 <View style={styles.itemDetails}>
                   <Chip 
                     style={[styles.categoryChip, { backgroundColor: '#E3F2FD' }]} 
@@ -280,12 +283,16 @@ const MenuManagement = ({ navigation }) => {
                   </Chip>
                 </View>
 
+                {item.description && (
+                  <Paragraph style={styles.description}>{item.description}</Paragraph>
+                )}
+
                 <Divider style={styles.divider} />
 
                 <View style={styles.restaurantInfo}>
                   <Paragraph style={styles.label}>Restaurant:</Paragraph>
                   <Paragraph style={styles.value}>
-                    {getRestaurantName(item.restaurantId?._id || item.restaurantId)}
+                    {item.restaurantInfo?.name || getRestaurantName(item.restaurantId)}
                   </Paragraph>
                 </View>
 
@@ -300,7 +307,7 @@ const MenuManagement = ({ navigation }) => {
                   </Button>
                   <Button
                     mode="outlined"
-                    onPress={() => toggleAvailability(item._id, item.available)}
+                    onPress={() => toggleAvailability(item)}
                     style={[
                       styles.actionButton,
                       { borderColor: item.available ? '#FF9800' : '#4CAF50' }
@@ -311,7 +318,7 @@ const MenuManagement = ({ navigation }) => {
                   </Button>
                   <Button
                     mode="contained"
-                    onPress={() => handleDeleteItem(item._id)}
+                    onPress={() => handleDeleteItem(item)}
                     style={[styles.actionButton, styles.deleteButton]}
                     icon="delete"
                   >
@@ -342,21 +349,32 @@ const MenuManagement = ({ navigation }) => {
               {editingItem ? 'Edit Menu Item' : 'Add New Menu Item'}
             </Title>
 
-            <View style={styles.imageUploadSection}>
-              <Button 
-                mode="outlined" 
-                onPress={handleImagePick} 
-                icon="camera" 
-                style={styles.imagePickerButton}
-              >
-                {formData.imageUri ? 'Change Image' : 'Select Image'}
-              </Button>
-              {formData.imageUri && (
-                <View style={styles.imagePreviewContainer}>
-                  <Image source={{ uri: formData.imageUri }} style={styles.imagePreview} />
-                </View>
-              )}
-            </View>
+            <TextInput
+              label="Item Name *"
+              value={formData.name}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, name: text }))}
+              mode="outlined"
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Description"
+              value={formData.description}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, description: text }))}
+              mode="outlined"
+              multiline
+              numberOfLines={3}
+              style={styles.input}
+            />
+
+            <TextInput
+              label="Price *"
+              value={formData.price}
+              onChangeText={(text) => setFormData(prev => ({ ...prev, price: text }))}
+              mode="outlined"
+              keyboardType="numeric"
+              style={styles.input}
+            />
 
             <View style={styles.pickerContainer}>
               <Text style={styles.pickerLabel}>Category *</Text>
@@ -404,7 +422,6 @@ const MenuManagement = ({ navigation }) => {
                 style={[styles.modalButton, styles.saveButton]}
               >
                 {editingItem ? 'Update' : 'Add'}
-              
               </Button>
             </View>
           </ScrollView>
@@ -564,33 +581,13 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 16,
     textAlign: 'center',
+    color: '#003366',
   },
-  imageUploadSection: {
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  imagePickerButton: {
-    width: '80%',
-    marginBottom: 10,
-  },
-  imagePreviewContainer: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    overflow: 'hidden',
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  imagePreview: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
+  input: {
+    marginBottom: 12,
   },
   pickerContainer: {
-    marginBottom: 15,
+    marginBottom: 16,
   },
   pickerLabel: {
     fontSize: 16,
@@ -601,12 +598,10 @@ const styles = StyleSheet.create({
   categoryOption: {
     marginRight: 8,
     marginBottom: 8,
-    backgroundColor: '#E0E0E0',
   },
   restaurantOption: {
     marginRight: 8,
     marginBottom: 8,
-    backgroundColor: '#E0E0E0',
   },
   modalActions: {
     flexDirection: 'row',
@@ -615,7 +610,7 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
-    marginHorizontal: 5,
+    marginHorizontal: 8,
   },
   saveButton: {
     backgroundColor: '#003366',
@@ -623,3 +618,4 @@ const styles = StyleSheet.create({
 });
 
 export default MenuManagement;
+

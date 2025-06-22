@@ -3,14 +3,14 @@ import { ScrollView, StyleSheet, Platform, View } from 'react-native';
 import { TextInput, Button, Title, Snackbar } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useSelector } from 'react-redux';
-import apiClient from '../../api/apiClient';
+import { createBooking } from '../../api/api';
 
 const FacilityBookingForm = ({ route, navigation }) => {
   const { facility } = route.params;
   const { user } = useSelector((state) => state.auth);
 
   const [name, setName] = useState(user?.name || '');
-  const [universityId, setUniversityId] = useState(user?.id || '');
+  const [universityId, setUniversityId] = useState(user?.studentId || user?.id || '');
   const [teamName, setTeamName] = useState('');
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -40,20 +40,25 @@ const FacilityBookingForm = ({ route, navigation }) => {
         return;
       }
 
-      await apiClient.post('/facilities/book', {
-        facilityId,
-        userId: universityId,
-        date: date.toISOString(),
+      // Create booking with proper data structure
+      const bookingData = {
+        resourceId: facilityId,
+        resourceType: 'facility',
+        startTime: date.toISOString(),
+        endTime: new Date(date.getTime() + 2 * 60 * 60 * 1000).toISOString(), // Default 2 hours
         purpose: `Booking by ${teamName}`,
-      });
+        additionalInfo: `Team: ${teamName}, Contact: ${name}`,
+      };
+
+      await createBooking(bookingData);
 
       setSnackbarMessage('Facility booked successfully!');
       setSnackbarVisible(true);
       setTimeout(() => navigation.goBack(), 2000);
     } catch (error) {
-      console.error('Booking error:', error.response?.data || error.message);
+      console.error('Booking error:', error);
       setSnackbarMessage(
-        error.response?.data?.msg || 'Booking failed. Try again.'
+        error.msg || error.message || 'Booking failed. Try again.'
       );
       setSnackbarVisible(true);
     } finally {
@@ -201,3 +206,4 @@ const styles = StyleSheet.create({
 });
 
 export default FacilityBookingForm;
+

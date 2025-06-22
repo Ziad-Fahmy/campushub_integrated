@@ -1,168 +1,284 @@
-import React from 'react';
-import { View, StyleSheet, ScrollView } from 'react-native';
-import { TextInput, Button, Text, HelperText, Card, Title } from 'react-native-paper';
-import { useSelector, useDispatch } from 'react-redux';
-import { Formik } from 'formik';
-import * as Yup from 'yup';
-import { addComplaint } from '../../redux/slices/complaintSlice';
-
-const ComplaintSchema = Yup.object().shape({
-  title: Yup.string()
-    .min(5, 'Title is too short')
-    .max(100, 'Title is too long')
-    .required('Required'),
-  description: Yup.string()
-    .min(20, 'Description is too short')
-    .max(500, 'Description is too long')
-    .required('Required'),
-  location: Yup.string()
-    .required('Required'),
-  category: Yup.string()
-    .required('Required'),
-});
+import React, { useState } from 'react';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import {
+  Card,
+  Title,
+  Paragraph,
+  Button,
+  TextInput,
+  Snackbar,
+  ActivityIndicator,
+  Text,
+  Chip
+} from 'react-native-paper';
+import { useSelector } from 'react-redux';
+import { createComplaint } from '../../api/api';
 
 const NewComplaint = ({ navigation }) => {
-  const dispatch = useDispatch();
-  const [loading, setLoading] = React.useState(false);
-  const [success, setSuccess] = React.useState(false);
+  const { user } = useSelector((state) => state.auth);
   
-  const handleSubmit = async (values, { resetForm }) => {
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    category: ''
+  });
+  const [loading, setLoading] = useState(false);
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  const categories = [
+    'Facilities',
+    'Food Services', 
+    'Academic',
+    'Technology',
+    'Transportation',
+    'Safety & Security',
+    'Other'
+  ];
+
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const validateForm = () => {
+    if (!formData.title.trim()) {
+      setSnackbarMessage('Please enter a complaint title');
+      setSnackbarVisible(true);
+      return false;
+    }
+    
+    if (!formData.description.trim()) {
+      setSnackbarMessage('Please enter a complaint description');
+      setSnackbarVisible(true);
+      return false;
+    }
+    
+    if (!formData.category) {
+      setSnackbarMessage('Please select a category');
+      setSnackbarVisible(true);
+      return false;
+    }
+    
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) {
+      return;
+    }
+
     try {
       setLoading(true);
       
-      // In a real app, this would dispatch an action to submit to the API
-      console.log("Submitting complaint:", values);
-      dispatch(addComplaint({ ...values, id: Date.now() })); // Dispatch the addComplaint action
+      const complaintData = {
+        title: formData.title.trim(),
+        description: formData.description.trim(),
+        category: formData.category
+      };
+
+      await createComplaint(complaintData);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      setSnackbarMessage('Complaint submitted successfully!');
+      setSnackbarVisible(true);
       
-      setSuccess(true);
-      resetForm();
-      setLoading(false);
+      // Reset form
+      setFormData({
+        title: '',
+        description: '',
+        category: ''
+      });
       
-      // Reset success message after 3 seconds
+      // Navigate to history after a short delay
       setTimeout(() => {
-        setSuccess(false);
-      }, 3000);
+        navigation.navigate('ComplaintHistory');
+      }, 2000);
+      
     } catch (error) {
-      console.error('Failed to submit complaint:', error);
+      console.error('Error submitting complaint:', error);
+      setSnackbarMessage('Failed to submit complaint. Please try again.');
+      setSnackbarVisible(true);
+    } finally {
       setLoading(false);
     }
   };
-  
+
+  const handleReset = () => {
+    Alert.alert(
+      'Reset Form',
+      'Are you sure you want to clear all fields?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Reset', 
+          style: 'destructive',
+          onPress: () => {
+            setFormData({
+              title: '',
+              description: '',
+              category: ''
+            });
+          }
+        }
+      ]
+    );
+  };
+
+  const getCategoryColor = (category) => {
+    const colors = {
+      'Facilities': '#2196F3',
+      'Food Services': '#FF5722',
+      'Academic': '#9C27B0',
+      'Technology': '#607D8B',
+      'Transportation': '#4CAF50',
+      'Safety & Security': '#F44336',
+      'Other': '#795548'
+    };
+    return colors[category] || '#666';
+  };
+
   return (
     <ScrollView style={styles.container}>
-      <Card style={styles.card}>
+      <View style={styles.header}>
+        <Title style={styles.headerTitle}>Submit a Complaint</Title>
+        <Paragraph style={styles.headerSubtitle}>
+          Help us improve campus services by reporting issues or concerns
+        </Paragraph>
+      </View>
+
+      <Card style={styles.formCard}>
         <Card.Content>
-          <Title style={styles.title}>Submit a Complaint</Title>
-          <Text style={styles.subtitle}>
-            Please provide details about your issue. We'll address it as soon as possible.
+          <TextInput
+            label="Complaint Title *"
+            value={formData.title}
+            onChangeText={(text) => handleInputChange('title', text)}
+            mode="outlined"
+            style={styles.input}
+            placeholder="Brief description of the issue"
+            maxLength={100}
+            disabled={loading}
+          />
+          
+          <Text style={styles.characterCount}>
+            {formData.title.length}/100 characters
           </Text>
-          
-          {success && (
-            <View style={styles.successContainer}>
-              <Text style={styles.successText}>
-                Your complaint has been submitted successfully!
-              </Text>
-            </View>
-          )}
-          
-          <Formik
-            initialValues={{ 
-              title: '', 
-              description: '', 
-              location: '',
-              category: 'facilities' 
-            }}
-            validationSchema={ComplaintSchema}
-            onSubmit={handleSubmit}
-          >
-            {({ handleChange, handleBlur, handleSubmit, values, errors, touched, setFieldValue }) => (
-              <View style={styles.form}>
-                <TextInput
-                  label="Complaint Title"
-                  value={values.title}
-                  onChangeText={handleChange('title')}
-                  onBlur={handleBlur('title')}
-                  error={touched.title && errors.title}
-                  style={styles.input}
-                />
-                {touched.title && errors.title && (
-                  <HelperText type="error">{errors.title}</HelperText>
-                )}
-                
-                <TextInput
-                  label="Description"
-                  value={values.description}
-                  onChangeText={handleChange('description')}
-                  onBlur={handleBlur('description')}
-                  error={touched.description && errors.description}
-                  multiline
-                  numberOfLines={4}
-                  style={styles.textArea}
-                />
-                {touched.description && errors.description && (
-                  <HelperText type="error">{errors.description}</HelperText>
-                )}
-                
-                <TextInput
-                  label="Location"
-                  value={values.location}
-                  onChangeText={handleChange('location')}
-                  onBlur={handleBlur('location')}
-                  error={touched.location && errors.location}
-                  style={styles.input}
-                  placeholder="e.g., Science Building, Room 101"
-                />
-                {touched.location && errors.location && (
-                  <HelperText type="error">{errors.location}</HelperText>
-                )}
-                
-                <Text style={styles.label}>Category</Text>
-                <View style={styles.categoryContainer}>
-                  {['facilities', 'academics', 'staff', 'food', 'other'].map((category) => (
-                    <Button
-                      key={category}
-                      mode={values.category === category ? "contained" : "outlined"}
-                      onPress={() => setFieldValue('category', category)}
-                      style={styles.categoryButton}
-                    >
-                      {category.charAt(0).toUpperCase() + category.slice(1)}
-                    </Button>
-                  ))}
-                </View>
-                
-                <Button 
-                  mode="contained" 
-                  onPress={handleSubmit} 
-                  loading={loading}
-                  style={styles.button}
+
+          <View style={styles.categorySection}>
+            <Text style={styles.categoryLabel}>Category *</Text>
+            <View style={styles.categoryContainer}>
+              {categories.map((category) => (
+                <Chip
+                  key={category}
+                  selected={formData.category === category}
+                  onPress={() => handleInputChange('category', category)}
+                  style={[
+                    styles.categoryChip,
+                    formData.category === category && {
+                      backgroundColor: getCategoryColor(category)
+                    }
+                  ]}
+                  textStyle={[
+                    styles.categoryText,
+                    formData.category === category && { color: '#fff' }
+                  ]}
                   disabled={loading}
                 >
-                  Submit Complaint
-                </Button>
-              </View>
-            )}
-          </Formik>
-        </Card.Content>
-      </Card>
-      
-      <Card style={styles.card}>
-        <Card.Content>
-          <Title style={styles.title}>My Complaints</Title>
-          <Text style={styles.emptyText}>
-            You haven't submitted any complaints yet.
+                  {category}
+                </Chip>
+              ))}
+            </View>
+          </View>
+
+          <TextInput
+            label="Detailed Description *"
+            value={formData.description}
+            onChangeText={(text) => handleInputChange('description', text)}
+            mode="outlined"
+            multiline
+            numberOfLines={6}
+            style={styles.descriptionInput}
+            placeholder="Please provide detailed information about the issue, including location, time, and any other relevant details..."
+            maxLength={500}
+            disabled={loading}
+          />
+          
+          <Text style={styles.characterCount}>
+            {formData.description.length}/500 characters
           </Text>
-          <Button 
-            mode="outlined" 
-            onPress={() => navigation.navigate('ComplaintHistory')}
-            style={styles.historyButton}
-          >
-            View Complaint History
-          </Button>
+
+          <View style={styles.userInfo}>
+            <Text style={styles.userInfoLabel}>Submitted by:</Text>
+            <Text style={styles.userInfoText}>{user?.name}</Text>
+            <Text style={styles.userInfoText}>{user?.email}</Text>
+          </View>
         </Card.Content>
       </Card>
+
+      <View style={styles.actionButtons}>
+        <Button
+          mode="outlined"
+          onPress={handleReset}
+          style={styles.resetButton}
+          icon="refresh"
+          disabled={loading}
+        >
+          Reset
+        </Button>
+        
+        <Button
+          mode="contained"
+          onPress={handleSubmit}
+          style={styles.submitButton}
+          icon="send"
+          loading={loading}
+          disabled={loading}
+        >
+          {loading ? 'Submitting...' : 'Submit Complaint'}
+        </Button>
+      </View>
+
+      <Card style={styles.infoCard}>
+        <Card.Content>
+          <Title style={styles.infoTitle}>What happens next?</Title>
+          <View style={styles.infoStep}>
+            <Text style={styles.stepNumber}>1.</Text>
+            <Text style={styles.stepText}>Your complaint will be reviewed by our admin team</Text>
+          </View>
+          <View style={styles.infoStep}>
+            <Text style={styles.stepNumber}>2.</Text>
+            <Text style={styles.stepText}>You'll receive updates on the status of your complaint</Text>
+          </View>
+          <View style={styles.infoStep}>
+            <Text style={styles.stepNumber}>3.</Text>
+            <Text style={styles.stepText}>Check the History tab to track progress</Text>
+          </View>
+        </Card.Content>
+      </Card>
+
+      <View style={styles.navigationButtons}>
+        <Button
+          mode="outlined"
+          onPress={() => navigation.navigate('ComplaintHistory')}
+          style={styles.historyButton}
+          icon="history"
+        >
+          View My Complaints
+        </Button>
+      </View>
+
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={3000}
+        action={{
+          label: 'Dismiss',
+          onPress: () => setSnackbarVisible(false),
+        }}
+      >
+        {snackbarMessage}
+      </Snackbar>
     </ScrollView>
   );
 };
@@ -171,69 +287,125 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#f5f5f5',
-    padding: 16,
   },
-  card: {
-    marginBottom: 16,
+  header: {
+    padding: 16,
+    backgroundColor: '#fff',
     elevation: 2,
   },
-  title: {
-    fontSize: 20,
+  headerTitle: {
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#003366',
-    marginBottom: 8,
   },
-  subtitle: {
+  headerSubtitle: {
+    fontSize: 14,
     color: '#666',
-    marginBottom: 16,
+    marginTop: 4,
   },
-  form: {
-    width: '100%',
+  formCard: {
+    margin: 16,
+    elevation: 2,
   },
   input: {
-    marginBottom: 10,
-    backgroundColor: '#fff',
+    marginBottom: 8,
   },
-  textArea: {
-    marginBottom: 10,
-    backgroundColor: '#fff',
-    height: 100,
+  characterCount: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'right',
+    marginBottom: 16,
   },
-  label: {
+  categorySection: {
+    marginBottom: 16,
+  },
+  categoryLabel: {
     fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 8,
     color: '#333',
   },
   categoryContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16,
+    gap: 8,
   },
-  categoryButton: {
-    margin: 4,
+  categoryChip: {
+    marginBottom: 8,
   },
-  button: {
-    marginTop: 20,
-    paddingVertical: 6,
+  categoryText: {
+    fontSize: 12,
   },
-  successContainer: {
-    backgroundColor: '#DFF2BF',
-    padding: 10,
+  descriptionInput: {
+    marginBottom: 8,
+    minHeight: 120,
+  },
+  userInfo: {
+    backgroundColor: '#f8f9fa',
+    padding: 12,
     borderRadius: 4,
+    marginTop: 8,
+  },
+  userInfoLabel: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#666',
+    marginBottom: 4,
+  },
+  userInfoText: {
+    fontSize: 14,
+    color: '#333',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    gap: 12,
     marginBottom: 16,
   },
-  successText: {
-    color: '#4F8A10',
-    textAlign: 'center',
+  resetButton: {
+    flex: 1,
+    borderColor: '#666',
+  },
+  submitButton: {
+    flex: 2,
+    backgroundColor: '#003366',
+  },
+  infoCard: {
+    margin: 16,
+    marginTop: 0,
+    elevation: 1,
+  },
+  infoTitle: {
+    fontSize: 18,
+    color: '#003366',
+    marginBottom: 12,
+  },
+  infoStep: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  stepNumber: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#003366',
+    marginRight: 8,
+    minWidth: 20,
+  },
+  stepText: {
+    fontSize: 14,
+    color: '#666',
+    flex: 1,
+    lineHeight: 20,
+  },
+  navigationButtons: {
+    paddingHorizontal: 16,
+    paddingBottom: 32,
   },
   historyButton: {
-    marginTop: 10,
-  },
-  emptyText: {
-    color: '#666',
-    fontStyle: 'italic',
-    marginBottom: 10,
+    borderColor: '#003366',
   },
 });
 
 export default NewComplaint;
+

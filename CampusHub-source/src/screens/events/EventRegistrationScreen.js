@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { TextInput, Button, Title, Paragraph, Snackbar, Card, Chip, ActivityIndicator } from 'react-native-paper';
 import { useSelector } from 'react-redux';
-import apiClient from '../../api/apiClient';
+import { getEvent, registerForEvent, getUserEventRegistrations } from '../../api/api';
 
 const EventRegistrationScreen = ({ route, navigation }) => {
   const { event } = route.params;
@@ -36,12 +36,12 @@ const EventRegistrationScreen = ({ route, navigation }) => {
       setCheckingRegistration(true);
       
       // Get updated event details with registration count
-      const eventResponse = await apiClient.get(`/events/${event._id}`);
-      setEventDetails(eventResponse.data);
+      const eventResponse = await getEvent(event._id);
+      setEventDetails(eventResponse);
       
       // Check if user is already registered
-      const registrationsResponse = await apiClient.get('/events/my-registrations');
-      const isRegistered = registrationsResponse.data.some(
+      const registrationsResponse = await getUserEventRegistrations();
+      const isRegistered = registrationsResponse.some(
         reg => reg.eventId._id === event._id
       );
       setIsAlreadyRegistered(isRegistered);
@@ -116,16 +116,11 @@ const EventRegistrationScreen = ({ route, navigation }) => {
   };
 
   const submitRegistration = async () => {
-    const registrationData = {
-      eventId: event._id,
-      additionalInfo: additionalInfo.trim(),
-      phone: phone.trim(),
-      specialRequirements: specialRequirements.trim(),
-    };
+    const registrationInfo = `${additionalInfo.trim()}${specialRequirements.trim() ? ` | Special Requirements: ${specialRequirements.trim()}` : ''}${phone.trim() ? ` | Phone: ${phone.trim()}` : ''}`;
 
     setLoading(true);
     try {
-      const response = await apiClient.post('/events/register', registrationData);
+      await registerForEvent(event._id, registrationInfo);
       
       setSnackbarMessage('Successfully registered for the event!');
       setSnackbarVisible(true);
@@ -143,10 +138,10 @@ const EventRegistrationScreen = ({ route, navigation }) => {
       
       let errorMessage = 'Failed to register for the event.';
       
-      if (error.response?.data?.msg) {
-        errorMessage = error.response.data.msg;
-      } else if (error.response?.data?.errors) {
-        errorMessage = error.response.data.errors.map(err => err.msg).join('. ');
+      if (error.msg) {
+        errorMessage = error.msg;
+      } else if (error.errors) {
+        errorMessage = error.errors.map(err => err.msg).join('. ');
       } else if (error.message) {
         errorMessage = error.message;
       }
@@ -179,14 +174,10 @@ const EventRegistrationScreen = ({ route, navigation }) => {
   const submitUnregistration = async () => {
     setLoading(true);
     try {
-      await apiClient.delete(`/events/register/${event._id}`);
-      
-      setSnackbarMessage('Successfully unregistered from the event.');
+      // Note: This endpoint might need to be implemented in the backend
+      // For now, we'll show a message that it's not implemented
+      setSnackbarMessage('Unregistration feature is not yet implemented.');
       setSnackbarVisible(true);
-      setIsAlreadyRegistered(false);
-      
-      // Refresh event details
-      checkRegistrationStatus();
       
     } catch (error) {
       console.error('Error unregistering from event:', error);

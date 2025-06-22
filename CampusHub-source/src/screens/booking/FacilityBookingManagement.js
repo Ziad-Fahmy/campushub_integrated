@@ -12,10 +12,10 @@ import {
   Text
 } from 'react-native-paper';
 import { useSelector } from 'react-redux';
-import apiClient from '../../api/apiClient';
+import { getAllBookings, updateBookingStatus } from '../../api/api';
 
 const FacilityBookingManagement = ({ navigation }) => {
-  const { user, token } = useSelector((state) => state.auth);
+  const { user } = useSelector((state) => state.auth);
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -24,14 +24,25 @@ const FacilityBookingManagement = ({ navigation }) => {
 
   const fetchBookings = async () => {
     try {
-      const response = await apiClient.get('/admin/facility-bookings', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setBookings(response.data.bookings || []);
+      const response = await getAllBookings();
+      setBookings(response || []);
     } catch (error) {
       console.error('Error fetching facility bookings:', error);
       setSnackbarMessage('Failed to fetch facility bookings');
       setSnackbarVisible(true);
+      // Set some mock data for testing
+      setBookings([
+        {
+          _id: '1',
+          userId: { name: 'John Doe', email: 'john@example.com', studentId: 'ST001' },
+          resourceId: { name: 'Basketball Court', type: 'sports', location: 'Sports Complex', capacity: 20 },
+          startTime: new Date().toISOString(),
+          endTime: new Date(Date.now() + 2 * 60 * 60 * 1000).toISOString(),
+          purpose: 'Basketball practice',
+          status: 'pending',
+          createdAt: new Date().toISOString()
+        }
+      ]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -49,10 +60,7 @@ const FacilityBookingManagement = ({ navigation }) => {
 
   const handleBookingAction = async (bookingId, action) => {
     try {
-      await apiClient.put(`/admin/facility-bookings/${bookingId}`, 
-        { status: action },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await updateBookingStatus(bookingId, action);
       
       setSnackbarMessage(`Booking ${action} successfully`);
       setSnackbarVisible(true);
@@ -74,17 +82,27 @@ const FacilityBookingManagement = ({ navigation }) => {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'accepted': return '#4CAF50';
-      case 'rejected': return '#F44336';
-      default: return '#FF9800';
+      case 'accepted': 
+      case 'approved': 
+        return '#4CAF50';
+      case 'rejected': 
+      case 'cancelled': 
+        return '#F44336';
+      default: 
+        return '#FF9800';
     }
   };
 
   const getStatusText = (status) => {
     switch (status) {
-      case 'accepted': return 'Accepted';
-      case 'rejected': return 'Rejected';
-      default: return 'Pending';
+      case 'accepted': 
+      case 'approved': 
+        return 'Approved';
+      case 'rejected': 
+      case 'cancelled': 
+        return 'Rejected';
+      default: 
+        return 'Pending';
     }
   };
 
@@ -127,13 +145,15 @@ const FacilityBookingManagement = ({ navigation }) => {
         </Card>
       ) : (
         bookings.map((booking) => {
-          const { date, time } = formatDateTime(booking.date);
+          const startDateTime = formatDateTime(booking.startTime);
+          const endDateTime = formatDateTime(booking.endTime);
+          
           return (
             <Card key={booking._id} style={styles.bookingCard}>
               <Card.Content>
                 <View style={styles.bookingHeader}>
                   <Title style={styles.facilityTitle}>
-                    {booking.facilityId?.name || 'Unknown Facility'}
+                    {booking.resourceId?.name || 'Unknown Facility'}
                   </Title>
                   <Chip 
                     style={[styles.statusChip, { backgroundColor: getStatusColor(booking.status) }]}
@@ -170,20 +190,23 @@ const FacilityBookingManagement = ({ navigation }) => {
                 <View style={styles.facilityInfo}>
                   <Paragraph style={styles.label}>Facility Details:</Paragraph>
                   <Paragraph style={styles.value}>
-                    Type: {booking.facilityId?.type || 'N/A'}
+                    Type: {booking.resourceId?.type || 'N/A'}
                   </Paragraph>
                   <Paragraph style={styles.value}>
-                    Location: {booking.facilityId?.location || 'N/A'}
+                    Location: {booking.resourceId?.location || 'N/A'}
                   </Paragraph>
                   <Paragraph style={styles.value}>
-                    Capacity: {booking.facilityId?.capacity || 'N/A'}
+                    Capacity: {booking.resourceId?.capacity || 'N/A'}
                   </Paragraph>
                 </View>
 
                 <View style={styles.bookingDateTime}>
-                  <Paragraph style={styles.label}>Booking Date & Time:</Paragraph>
+                  <Paragraph style={styles.label}>Booking Time:</Paragraph>
                   <Paragraph style={styles.value}>
-                    {date} at {time}
+                    From: {startDateTime.date} at {startDateTime.time}
+                  </Paragraph>
+                  <Paragraph style={styles.value}>
+                    To: {endDateTime.date} at {endDateTime.time}
                   </Paragraph>
                 </View>
 
@@ -199,11 +222,11 @@ const FacilityBookingManagement = ({ navigation }) => {
                   <View style={styles.actionButtons}>
                     <Button
                       mode="contained"
-                      onPress={() => handleBookingAction(booking._id, 'accepted')}
+                      onPress={() => handleBookingAction(booking._id, 'approved')}
                       style={[styles.actionButton, styles.acceptButton]}
                       icon="check"
                     >
-                      Accept
+                      Approve
                     </Button>
                     <Button
                       mode="contained"

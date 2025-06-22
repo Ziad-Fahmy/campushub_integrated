@@ -18,6 +18,162 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
+// @route   GET api/restaurants/admin/restaurants
+// @desc    Get all restaurants for admin
+// @access  Private/Admin
+router.get('/admin/restaurants', [auth, admin], async (req, res) => {
+  try {
+    const restaurants = await Restaurant.find().sort({ name: 1 });
+    res.json({ restaurants });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   GET api/restaurants/admin/menu-items
+// @desc    Get all menu items from all restaurants (Admin)
+// @access  Private/Admin
+router.get('/admin/menu-items', [auth, admin], async (req, res) => {
+  try {
+    const restaurants = await Restaurant.find().select('name menu');
+    
+    let allMenuItems = [];
+    restaurants.forEach(restaurant => {
+      if (restaurant.menu && restaurant.menu.length > 0) {
+        restaurant.menu.forEach(item => {
+          allMenuItems.push({
+            ...item.toObject(),
+            restaurantId: restaurant._id,
+            restaurantName: restaurant.name
+          });
+        });
+      }
+    });
+    
+    res.json({ menuItems: allMenuItems });
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   POST api/restaurants/admin/menu-items
+// @desc    Add menu item to restaurant (Admin)
+// @access  Private/Admin
+router.post('/admin/menu-items', [auth, admin, [
+  check('category', 'Category is required').not().isEmpty(),
+  check('restaurantId', 'Restaurant ID is required').not().isEmpty()
+]], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+  
+  const { category, restaurantId, available = true, imageUrl } = req.body;
+  
+  try {
+    let restaurant = await Restaurant.findById(restaurantId);
+    
+    if (!restaurant) {
+      return res.status(404).json({ msg: 'Restaurant not found' });
+    }
+    
+    const newMenuItem = {
+      name: `${category} Item`,
+      description: `Delicious ${category.toLowerCase()}`,
+      price: 10.99,
+      category,
+      available,
+      imageUrl: imageUrl || ''
+    };
+    
+    restaurant.menu.push(newMenuItem);
+    restaurant.updatedAt = Date.now();
+    
+    await restaurant.save();
+    
+    res.json({ msg: 'Menu item added successfully', restaurant });
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Restaurant not found' });
+    }
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   PUT api/restaurants/admin/menu-items/:menuId
+// @desc    Update specific menu item (Admin)
+// @access  Private/Admin
+router.put('/admin/menu-items/:menuId', [auth, admin], async (req, res) => {
+  const { category, available, restaurantId } = req.body;
+  
+  try {
+    // Find the restaurant that contains this menu item
+    let restaurant = await Restaurant.findOne({ 'menu._id': req.params.menuId });
+    
+    if (!restaurant) {
+      return res.status(404).json({ msg: 'Menu item not found' });
+    }
+    
+    const menuItem = restaurant.menu.id(req.params.menuId);
+    
+    if (!menuItem) {
+      return res.status(404).json({ msg: 'Menu item not found' });
+    }
+    
+    // Update menu item fields
+    if (category) menuItem.category = category;
+    if (available !== undefined) menuItem.available = available;
+    
+    restaurant.updatedAt = Date.now();
+    
+    await restaurant.save();
+    
+    res.json({ msg: 'Menu item updated successfully', restaurant });
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Menu item not found' });
+    }
+    res.status(500).send('Server error');
+  }
+});
+
+// @route   DELETE api/restaurants/admin/menu-items/:menuId
+// @desc    Delete specific menu item (Admin)
+// @access  Private/Admin
+router.delete('/admin/menu-items/:menuId', [auth, admin], async (req, res) => {
+  try {
+    // Find the restaurant that contains this menu item
+    let restaurant = await Restaurant.findOne({ 'menu._id': req.params.menuId });
+    
+    if (!restaurant) {
+      return res.status(404).json({ msg: 'Menu item not found' });
+    }
+    
+    const menuItem = restaurant.menu.id(req.params.menuId);
+    
+    if (!menuItem) {
+      return res.status(404).json({ msg: 'Menu item not found' });
+    }
+    
+    restaurant.menu.pull(req.params.menuId);
+    restaurant.updatedAt = Date.now();
+    
+    await restaurant.save();
+    
+    res.json({ msg: 'Menu item removed successfully' });
+  } catch (err) {
+    console.error(err.message);
+    if (err.kind === 'ObjectId') {
+      return res.status(404).json({ msg: 'Menu item not found' });
+    }
+    res.status(500).send('Server error');
+  }
+});
+
 // @route   GET api/restaurants/:id
 // @desc    Get restaurant by ID
 // @access  Private
@@ -56,33 +212,6 @@ router.get('/:id/menu', auth, async (req, res) => {
     if (err.kind === 'ObjectId') {
       return res.status(404).json({ msg: 'Restaurant not found' });
     }
-    res.status(500).send('Server error');
-  }
-});
-
-// @route   GET api/restaurants/menu/all
-// @desc    Get all menu items from all restaurants (Admin)
-// @access  Private/Admin
-router.get('/menu/all', [auth, admin], async (req, res) => {
-  try {
-    const restaurants = await Restaurant.find().select('name menu');
-    
-    let allMenuItems = [];
-    restaurants.forEach(restaurant => {
-      if (restaurant.menu && restaurant.menu.length > 0) {
-        restaurant.menu.forEach(item => {
-          allMenuItems.push({
-            ...item.toObject(),
-            restaurantId: restaurant._id,
-            restaurantName: restaurant.name
-          });
-        });
-      }
-    });
-    
-    res.json(allMenuItems);
-  } catch (err) {
-    console.error(err.message);
     res.status(500).send('Server error');
   }
 });
