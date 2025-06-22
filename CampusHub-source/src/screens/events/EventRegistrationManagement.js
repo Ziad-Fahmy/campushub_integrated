@@ -1,205 +1,492 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, StyleSheet, ScrollView, RefreshControl, Alert } from 'react-native';
 import { 
-  Card, 
   Title, 
-  Paragraph, 
+  Card, 
   Button, 
+  DataTable, 
+  Searchbar, 
   Chip, 
-  Snackbar, 
+  Text,
   ActivityIndicator,
+  Snackbar,
+  Menu,
   Divider,
-  Text
+  Badge
 } from 'react-native-paper';
 import { useSelector } from 'react-redux';
+import { useFocusEffect } from '@react-navigation/native';
 import apiClient from '../../api/apiClient';
 
 const EventRegistrationManagement = ({ navigation }) => {
-  const { user, token } = useSelector((state) => state.auth);
+  const { user } = useSelector((state) => state.auth);
+  const [events, setEvents] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState(null);
   const [registrations, setRegistrations] = useState([]);
+  const [allRegistrations, setAllRegistrations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [viewMode, setViewMode] = useState('events'); // 'events' or 'all-registrations'
 
-  const fetchRegistrations = async () => {
+  // Check if user is admin
+  const isAdmin = user?.role === 'admin';
+
+  useFocusEffect(
+    useCallback(() => {
+      if (isAdmin) {
+        loadEvents();
+        loadAllRegistrations();
+      }
+    }, [isAdmin])
+  );
+
+  const loadEvents = async () => {
     try {
-      const response = await apiClient.get('/admin/event-registrations', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setRegistrations(response.data.registrations || []);
+      const response = await apiClient.get('/events');
+      setEvents(response.data);
     } catch (error) {
-      console.error('Error fetching event registrations:', error);
-      setSnackbarMessage('Failed to fetch event registrations');
-      setSnackbarVisible(true);
+      console.error('Error loading events:', error);
+      showSnackbar('Failed to load events');
+    }
+  };
+
+  const loadAllRegistrations = async () => {
+    try {
+      const response = await apiClient.get('/events/admin/all-registrations');
+      setAllRegistrations(response.data.registrations || []);
+    } catch (error) {
+      console.error('Error loading all registrations:', error);
+      showSnackbar('Failed to load registrations');
+    }
+  };
+
+  const loadEventRegistrations = async (eventId) => {
+    try {
+      setLoading(true);
+      const response = await apiClient.get(`/events/${eventId}/registrations`);
+      setRegistrations(response.data.registrations || []);
+      setSelectedEvent(response.data.event);
+    } catch (error) {
+      console.error('Error loading event registrations:', error);
+      showSnackbar('Failed to load event registrations');
+      setRegistrations([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await loadEvents();
+      await loadAllRegistrations();
+      if (selectedEvent) {
+        await loadEventRegistrations(selectedEvent.id);
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
       setRefreshing(false);
     }
   };
 
-  useEffect(() => {
-    fetchRegistrations();
-  }, []);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchRegistrations();
+  const deleteRegistration = async (registrationId) => {
+    Alert.alert(
+      'Delete Registration',
+      'Are you sure you want to delete this registration?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await apiClient.delete(`/events/admin/registration/${registrationId}`);
+              showSnackbar('Registration deleted successfully');
+              
+              // Refresh data
+              if (selectedEvent) {
+                await loadEventRegistrations(selectedEvent.id);
+              }
+              await loadAllRegistrations();
+              await loadEvents();
+            } catch (error) {
+              console.error('Error deleting registration:', error);
+              showSnackbar('Failed to delete registration');
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const handleRegistrationAction = async (registrationId, action) => {
+  const showSnackbar = (message) => {
+    setSnackbarMessage(message);
+    setSnackbarVisible(true);
+  };
+
+  const formatDate = (dateString) => {
     try {
-      await apiClient.put(`/admin/event-registrations/${registrationId}`, 
-        { status: action },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      setSnackbarMessage(`Registration ${action} successfully`);
-      setSnackbarVisible(true);
-      
-      // Update local state
-      setRegistrations(prev => 
-        prev.map(reg => 
-          reg._id === registrationId 
-            ? { ...reg, status: action }
-            : reg
-        )
-      );
+      return new Date(dateString).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
     } catch (error) {
-      console.error(`Error ${action} registration:`, error);
-      setSnackbarMessage(`Failed to ${action} registration`);
-      setSnackbarVisible(true);
+      return 'Invalid Date';
     }
   };
 
-  const getStatusColor = (status) => {
-    switch (status) {
-      case 'accepted': return '#4CAF50';
-      case 'rejected': return '#F44336';
-      default: return '#FF9800';
+  const formatDateTime = (dateString) => {
+    try {
+      return new Date(dateString).toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    } catch (error) {
+      return 'Invalid Date';
     }
   };
 
-  const getStatusText = (status) => {
-    switch (status) {
-      case 'accepted': return 'Accepted';
-      case 'rejected': return 'Rejected';
-      default: return 'Pending';
-    }
-  };
+  const filteredEvents = events.filter(event =>
+    event.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    event.organizer.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
-  if (loading) {
+  const filteredRegistrations = allRegistrations.filter(reg =>
+    reg.studentName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    reg.studentEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    reg.eventTitle.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredEventRegistrations = registrations.filter(reg =>
+    reg.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    reg.email.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  if (!isAdmin) {
+    return (
+      <View style={styles.unauthorizedContainer}>
+        <Title style={styles.unauthorizedTitle}>Access Denied</Title>
+        <Text style={styles.unauthorizedText}>
+          You need admin privileges to access this page.
+        </Text>
+        <Button
+          mode="contained"
+          onPress={() => navigation.goBack()}
+          style={styles.backButton}
+        >
+          Go Back
+        </Button>
+      </View>
+    );
+  }
+
+  if (loading && !selectedEvent && viewMode === 'events') {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#003366" />
-        <Text style={styles.loadingText}>Loading event registrations...</Text>
+        <Text style={styles.loadingText}>Loading events...</Text>
       </View>
     );
   }
 
   return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-      }
-    >
-      <Title style={styles.header}>Event Registration Management</Title>
-      <Paragraph style={styles.subtitle}>
-        Manage event registrations from students
-      </Paragraph>
-
-      {registrations.length === 0 ? (
-        <Card style={styles.emptyCard}>
-          <Card.Content>
-            <Paragraph style={styles.emptyText}>
-              No event registrations found.
-            </Paragraph>
-          </Card.Content>
-        </Card>
-      ) : (
-        registrations.map((registration) => (
-          <Card key={registration._id} style={styles.registrationCard}>
-            <Card.Content>
-              <View style={styles.registrationHeader}>
-                <Title style={styles.eventTitle}>
-                  {registration.eventId?.title || 'Unknown Event'}
-                </Title>
-                <Chip 
-                  style={[styles.statusChip, { backgroundColor: getStatusColor(registration.status) }]}
-                  textStyle={styles.statusText}
+    <View style={styles.container}>
+      {/* Header */}
+      <Card style={styles.headerCard}>
+        <Card.Content>
+          <View style={styles.headerRow}>
+            <Title style={styles.headerTitle}>Registration Management</Title>
+            <Menu
+              visible={menuVisible}
+              onDismiss={() => setMenuVisible(false)}
+              anchor={
+                <Button
+                  mode="outlined"
+                  onPress={() => setMenuVisible(true)}
+                  icon="menu"
+                  compact
                 >
-                  {getStatusText(registration.status)}
-                </Chip>
-              </View>
+                  View
+                </Button>
+              }
+            >
+              <Menu.Item
+                onPress={() => {
+                  setViewMode('events');
+                  setSelectedEvent(null);
+                  setMenuVisible(false);
+                }}
+                title="Events Overview"
+                leadingIcon="calendar-multiple"
+              />
+              <Menu.Item
+                onPress={() => {
+                  setViewMode('all-registrations');
+                  setSelectedEvent(null);
+                  setMenuVisible(false);
+                }}
+                title="All Registrations"
+                leadingIcon="account-group"
+              />
+            </Menu>
+          </View>
+          
+          <Searchbar
+            placeholder={
+              viewMode === 'events' 
+                ? "Search events..." 
+                : selectedEvent 
+                  ? "Search registrations..." 
+                  : "Search all registrations..."
+            }
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={styles.searchbar}
+          />
+        </Card.Content>
+      </Card>
 
-              <Divider style={styles.divider} />
-
-              <View style={styles.userInfo}>
-                <Paragraph style={styles.label}>Student Name:</Paragraph>
-                <Paragraph style={styles.value}>{registration.name}</Paragraph>
-              </View>
-
-              <View style={styles.userInfo}>
-                <Paragraph style={styles.label}>Email:</Paragraph>
-                <Paragraph style={styles.value}>{registration.email}</Paragraph>
-              </View>
-
-              {registration.additionalInfo && (
-                <View style={styles.userInfo}>
-                  <Paragraph style={styles.label}>Additional Information:</Paragraph>
-                  <Paragraph style={styles.value}>{registration.additionalInfo}</Paragraph>
+      <ScrollView
+        style={styles.scrollView}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+        }
+      >
+        {/* Events Overview */}
+        {viewMode === 'events' && !selectedEvent && (
+          <View>
+            <Card style={styles.statsCard}>
+              <Card.Content>
+                <Title style={styles.statsTitle}>Overview</Title>
+                <View style={styles.statsRow}>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statNumber}>{events.length}</Text>
+                    <Text style={styles.statLabel}>Total Events</Text>
+                  </View>
+                  <View style={styles.statItem}>
+                    <Text style={styles.statNumber}>
+                      {events.reduce((sum, event) => sum + (event.registrationCount || 0), 0)}
+                    </Text>
+                    <Text style={styles.statLabel}>Total Registrations</Text>
+                  </View>
                 </View>
-              )}
+              </Card.Content>
+            </Card>
 
-              <View style={styles.eventInfo}>
-                <Paragraph style={styles.label}>Event Details:</Paragraph>
-                <Paragraph style={styles.value}>
-                  Location: {registration.eventId?.location || 'N/A'}
-                </Paragraph>
-                <Paragraph style={styles.value}>
-                  Date: {registration.eventId?.startDate 
-                    ? new Date(registration.eventId.startDate).toLocaleDateString()
-                    : 'N/A'
-                  }
-                </Paragraph>
-                <Paragraph style={styles.value}>
-                  Organizer: {registration.eventId?.organizer || 'N/A'}
-                </Paragraph>
-              </View>
-
-              <View style={styles.registrationDate}>
-                <Paragraph style={styles.label}>Registration Date:</Paragraph>
-                <Paragraph style={styles.value}>
-                  {new Date(registration.createdAt).toLocaleDateString()} at{' '}
-                  {new Date(registration.createdAt).toLocaleTimeString()}
-                </Paragraph>
-              </View>
-
-              {registration.status === 'pending' && (
-                <View style={styles.actionButtons}>
+            {filteredEvents.map((event) => (
+              <Card key={event._id} style={styles.eventCard}>
+                <Card.Content>
+                  <View style={styles.eventHeader}>
+                    <Title style={styles.eventTitle}>{event.title}</Title>
+                    <Badge style={styles.registrationBadge}>
+                      {event.registrationCount || 0}
+                    </Badge>
+                  </View>
+                  
+                  <Text style={styles.eventDetails}>
+                    📅 {formatDate(event.startDate)} • 📍 {event.location}
+                  </Text>
+                  <Text style={styles.eventDetails}>
+                    👤 {event.organizer} • 🏷️ {event.category}
+                  </Text>
+                  
+                  {event.maxParticipants && (
+                    <View style={styles.capacityRow}>
+                      <Text style={styles.capacityText}>
+                        Capacity: {event.registrationCount || 0}/{event.maxParticipants}
+                      </Text>
+                      <Chip
+                        style={[
+                          styles.capacityChip,
+                          (event.registrationCount || 0) >= event.maxParticipants
+                            ? styles.fullChip
+                            : styles.availableChip
+                        ]}
+                        textStyle={styles.chipText}
+                      >
+                        {(event.registrationCount || 0) >= event.maxParticipants ? 'Full' : 'Available'}
+                      </Chip>
+                    </View>
+                  )}
+                  
                   <Button
                     mode="contained"
-                    onPress={() => handleRegistrationAction(registration._id, 'accepted')}
-                    style={[styles.actionButton, styles.acceptButton]}
-                    icon="check"
+                    onPress={() => loadEventRegistrations(event._id)}
+                    style={styles.viewButton}
+                    icon="eye"
+                    disabled={!event.registrationCount}
                   >
-                    Accept
+                    View Registrations ({event.registrationCount || 0})
                   </Button>
+                </Card.Content>
+              </Card>
+            ))}
+          </View>
+        )}
+
+        {/* Event Registrations Detail */}
+        {selectedEvent && (
+          <View>
+            <Card style={styles.eventDetailCard}>
+              <Card.Content>
+                <View style={styles.eventDetailHeader}>
+                  <Title style={styles.eventDetailTitle}>{selectedEvent.title}</Title>
                   <Button
-                    mode="contained"
-                    onPress={() => handleRegistrationAction(registration._id, 'rejected')}
-                    style={[styles.actionButton, styles.rejectButton]}
-                    icon="close"
+                    mode="outlined"
+                    onPress={() => setSelectedEvent(null)}
+                    icon="arrow-left"
+                    compact
                   >
-                    Reject
+                    Back
                   </Button>
                 </View>
-              )}
-            </Card.Content>
-          </Card>
-        ))
-      )}
+                
+                <Text style={styles.eventDetailInfo}>
+                  📅 {formatDate(selectedEvent.startDate)} • 📍 {selectedEvent.location}
+                </Text>
+                <Text style={styles.registrationCount}>
+                  Total Registrations: {registrations.length}
+                  {selectedEvent.maxParticipants && ` / ${selectedEvent.maxParticipants}`}
+                </Text>
+              </Card.Content>
+            </Card>
+
+            {filteredEventRegistrations.length > 0 ? (
+              <Card style={styles.tableCard}>
+                <Card.Content>
+                  <DataTable>
+                    <DataTable.Header>
+                      <DataTable.Title>Name</DataTable.Title>
+                      <DataTable.Title>Email</DataTable.Title>
+                      <DataTable.Title>Date</DataTable.Title>
+                      <DataTable.Title>Actions</DataTable.Title>
+                    </DataTable.Header>
+
+                    {filteredEventRegistrations.map((registration) => (
+                      <DataTable.Row key={registration.id}>
+                        <DataTable.Cell>
+                          <View>
+                            <Text style={styles.registrationName}>{registration.name}</Text>
+                            {registration.studentId !== 'N/A' && (
+                              <Text style={styles.studentId}>ID: {registration.studentId}</Text>
+                            )}
+                          </View>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <Text style={styles.registrationEmail}>{registration.email}</Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <Text style={styles.registrationDate}>
+                            {formatDateTime(registration.registeredAt)}
+                          </Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <Button
+                            mode="outlined"
+                            onPress={() => deleteRegistration(registration.id)}
+                            icon="delete"
+                            compact
+                            textColor="#D32F2F"
+                          >
+                            Remove
+                          </Button>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))}
+                  </DataTable>
+                </Card.Content>
+              </Card>
+            ) : (
+              <Card style={styles.emptyCard}>
+                <Card.Content>
+                  <Text style={styles.emptyText}>No registrations found for this event.</Text>
+                </Card.Content>
+              </Card>
+            )}
+          </View>
+        )}
+
+        {/* All Registrations View */}
+        {viewMode === 'all-registrations' && !selectedEvent && (
+          <View>
+            <Card style={styles.statsCard}>
+              <Card.Content>
+                <Title style={styles.statsTitle}>All Registrations</Title>
+                <Text style={styles.totalRegistrations}>
+                  Total: {allRegistrations.length} registrations
+                </Text>
+              </Card.Content>
+            </Card>
+
+            {filteredRegistrations.length > 0 ? (
+              <Card style={styles.tableCard}>
+                <Card.Content>
+                  <DataTable>
+                    <DataTable.Header>
+                      <DataTable.Title>Student</DataTable.Title>
+                      <DataTable.Title>Event</DataTable.Title>
+                      <DataTable.Title>Date</DataTable.Title>
+                      <DataTable.Title>Actions</DataTable.Title>
+                    </DataTable.Header>
+
+                    {filteredRegistrations.map((registration) => (
+                      <DataTable.Row key={registration.id}>
+                        <DataTable.Cell>
+                          <View>
+                            <Text style={styles.registrationName}>{registration.studentName}</Text>
+                            <Text style={styles.registrationEmail}>{registration.studentEmail}</Text>
+                            {registration.studentId !== 'N/A' && (
+                              <Text style={styles.studentId}>ID: {registration.studentId}</Text>
+                            )}
+                          </View>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <View>
+                            <Text style={styles.eventTitle}>{registration.eventTitle}</Text>
+                            <Text style={styles.eventDate}>
+                              {formatDate(registration.eventDate)}
+                            </Text>
+                          </View>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <Text style={styles.registrationDate}>
+                            {formatDateTime(registration.registeredAt)}
+                          </Text>
+                        </DataTable.Cell>
+                        <DataTable.Cell>
+                          <Button
+                            mode="outlined"
+                            onPress={() => deleteRegistration(registration.id)}
+                            icon="delete"
+                            compact
+                            textColor="#D32F2F"
+                          >
+                            Remove
+                          </Button>
+                        </DataTable.Cell>
+                      </DataTable.Row>
+                    ))}
+                  </DataTable>
+                </Card.Content>
+              </Card>
+            ) : (
+              <Card style={styles.emptyCard}>
+                <Card.Content>
+                  <Text style={styles.emptyText}>No registrations found.</Text>
+                </Card.Content>
+              </Card>
+            )}
+          </View>
+        )}
+      </ScrollView>
 
       <Snackbar
         visible={snackbarVisible}
@@ -212,15 +499,30 @@ const EventRegistrationManagement = ({ navigation }) => {
       >
         {snackbarMessage}
       </Snackbar>
-    </ScrollView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
     backgroundColor: '#f5f5f5',
+  },
+  unauthorizedContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#f5f5f5',
+  },
+  unauthorizedTitle: {
+    color: '#D32F2F',
+    marginBottom: 16,
+  },
+  unauthorizedText: {
+    textAlign: 'center',
+    marginBottom: 24,
+    color: '#666',
   },
   loadingContainer: {
     flex: 1,
@@ -229,102 +531,174 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
   },
   loadingText: {
-    marginTop: 10,
-    fontSize: 16,
+    marginTop: 16,
     color: '#666',
   },
-  header: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-    textAlign: 'center',
-    color: '#003366',
+  headerCard: {
+    margin: 16,
+    elevation: 4,
   },
-  subtitle: {
-    fontSize: 16,
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#666',
-  },
-  emptyCard: {
-    marginBottom: 16,
-    backgroundColor: '#fff',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#666',
-    fontSize: 16,
-  },
-  registrationCard: {
-    marginBottom: 16,
-    backgroundColor: '#fff',
-    elevation: 2,
-  },
-  registrationHeader: {
+  headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 16,
   },
-  eventTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  headerTitle: {
     color: '#003366',
+    fontSize: 24,
+  },
+  searchbar: {
+    elevation: 0,
+    backgroundColor: '#f0f0f0',
+  },
+  scrollView: {
     flex: 1,
   },
-  statusChip: {
-    marginLeft: 10,
+  statsCard: {
+    margin: 16,
+    marginTop: 0,
+    elevation: 2,
   },
-  statusText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  divider: {
-    marginVertical: 10,
-  },
-  userInfo: {
-    marginBottom: 8,
-  },
-  eventInfo: {
-    marginBottom: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-  },
-  registrationDate: {
+  statsTitle: {
+    color: '#003366',
     marginBottom: 12,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
   },
-  label: {
-    fontSize: 14,
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statNumber: {
+    fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 2,
+    color: '#003366',
   },
-  value: {
+  statLabel: {
+    fontSize: 14,
+    color: '#666',
+  },
+  totalRegistrations: {
+    fontSize: 16,
+    color: '#666',
+  },
+  eventCard: {
+    margin: 16,
+    marginTop: 0,
+    elevation: 2,
+  },
+  eventHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  eventTitle: {
+    flex: 1,
+    fontSize: 18,
+    color: '#003366',
+  },
+  registrationBadge: {
+    backgroundColor: '#003366',
+    color: '#fff',
+  },
+  eventDetails: {
     fontSize: 14,
     color: '#666',
     marginBottom: 4,
   },
-  actionButtons: {
+  capacityRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 12,
   },
-  actionButton: {
+  capacityText: {
+    fontSize: 14,
+    color: '#666',
+  },
+  capacityChip: {
+    height: 24,
+  },
+  fullChip: {
+    backgroundColor: '#FFEBEE',
+  },
+  availableChip: {
+    backgroundColor: '#E8F5E8',
+  },
+  chipText: {
+    fontSize: 12,
+  },
+  viewButton: {
+    backgroundColor: '#003366',
+    marginTop: 8,
+  },
+  eventDetailCard: {
+    margin: 16,
+    marginTop: 0,
+    elevation: 4,
+  },
+  eventDetailHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  eventDetailTitle: {
     flex: 1,
-    marginHorizontal: 5,
+    color: '#003366',
+    fontSize: 20,
   },
-  acceptButton: {
-    backgroundColor: '#4CAF50',
+  eventDetailInfo: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 8,
   },
-  rejectButton: {
-    backgroundColor: '#F44336',
+  registrationCount: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#003366',
+  },
+  tableCard: {
+    margin: 16,
+    marginTop: 0,
+    elevation: 2,
+  },
+  registrationName: {
+    fontWeight: 'bold',
+    color: '#003366',
+  },
+  registrationEmail: {
+    fontSize: 12,
+    color: '#666',
+  },
+  studentId: {
+    fontSize: 11,
+    color: '#999',
+  },
+  registrationDate: {
+    fontSize: 12,
+    color: '#666',
+  },
+  eventDate: {
+    fontSize: 12,
+    color: '#666',
+  },
+  emptyCard: {
+    margin: 16,
+    marginTop: 0,
+    elevation: 1,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#666',
+    fontStyle: 'italic',
+  },
+  backButton: {
+    backgroundColor: '#003366',
   },
 });
 
