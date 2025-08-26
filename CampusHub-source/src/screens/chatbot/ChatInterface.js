@@ -6,7 +6,7 @@ const API_BASE_URL = 'http://192.168.1.50:5000/api'; // Your server IP address
 
 const sendMessageToChatbot = async (message) => {
   try {
-const response = await fetch('http://192.168.1.50:5000/api/chatbot/chat', {
+const response = await fetch('http://10.220.1.107:5000/api/chatbot/chat', {
 method: 'POST',
 headers: {
 'Content-Type': 'application/json',
