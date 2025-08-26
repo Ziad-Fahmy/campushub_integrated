@@ -76,6 +76,8 @@ We welcome contributions! Please fork the repository and submit a pull request. 
 ## Maintainers
 
 - [Ziad Fahmy](https://github.com/Ziad-Fahmy)
+- [Kenzy Alaa](https://github.com/kenzyalaa)
+- [Mohamed Tammam](https://github.com/Tammam11)
 
 ## License
 
